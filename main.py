@@ -1,60 +1,51 @@
 #!/usr/bin/env python3
-"""news-image-20261122 — THE SUNDAY GAZETTE.
+"""news-image-20261122 v2 — THE SUNDAY GAZETTE (Monday refresh).
 
-Writes one image summing up Sunday 22 November 2026 to the output directory.
-
-The image is pre-rendered at build time (entry.png, next to this file).
-This entrypoint is stdlib-only: it validates the PNG and copies it to
-$MAKEFUN_OUTPUT_DIR (default /output). It never deletes the output
-directory itself.
+Stdlib-only entry program (the make.fun grader has no Pillow): validates the
+pre-rendered entry.png and copies it to $MAKEFUN_OUTPUT_DIR.
+The image itself is rendered at build time by render.py (PIL, build machine
+only) from the verified stories in the lab research notes.
 """
-
 import os
 import shutil
 import struct
 import sys
 
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-MAX_DIM = 1024
-MAX_SIZE = 1024 * 1024
+HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(HERE, "entry.png")
+MAX_BYTES = 1024 * 1024
+PNG_SIG = b"\x89PNG\r\n\x1a\n"
 
 
-def fail(message):
-    sys.stderr.write("error: %s\n" % message)
-    sys.exit(1)
+def fail(msg):
+    print("error: " + msg, file=sys.stderr)
+    return 1
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    src = os.path.join(here, "entry.png")
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
-    dst = os.path.join(out_dir, "entry.png")
-
-    if not os.path.isfile(src):
-        fail("entry.png not found next to main.py")
-
-    with open(src, "rb") as fh:
-        data = fh.read()
-
-    if len(data) > MAX_SIZE:
-        fail("entry.png is %d bytes, over the 1 MiB limit" % len(data))
-    if data[:8] != PNG_SIGNATURE:
-        fail("entry.png does not start with the PNG signature")
-    if len(data) < 33:
-        fail("entry.png is too short to hold an IHDR chunk")
-    ihdr_len, ihdr_type = struct.unpack(">I4s", data[8:16])
-    if ihdr_type != b"IHDR" or ihdr_len != 13:
-        fail("entry.png has no valid IHDR chunk")
+    if not os.path.isfile(SRC):
+        return fail("entry.png not found next to main.py")
+    size = os.path.getsize(SRC)
+    if size >= MAX_BYTES:
+        return fail("entry.png is %d bytes, must be < 1 MiB" % size)
+    with open(SRC, "rb") as f:
+        data = f.read()
+    if data[:8] != PNG_SIG:
+        return fail("entry.png is not a PNG file")
+    if len(data) < 33 or data[12:16] != b"IHDR":
+        return fail("entry.png has no IHDR chunk")
     width, height = struct.unpack(">II", data[16:24])
-    if width > MAX_DIM or height > MAX_DIM:
-        fail("entry.png is %dx%d, over the 1024x1024 limit" % (width, height))
-    if data[-8:-4] != b"IEND":
-        fail("entry.png has no IEND tail chunk")
-
+    if (width, height) != (1024, 1024):
+        return fail("entry.png is %dx%d, expected 1024x1024" % (width, height))
+    if data[-12:] != b"\x00\x00\x00\x00IEND\xaeB`\x82":
+        return fail("entry.png has no valid IEND tail")
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
     os.makedirs(out_dir, exist_ok=True)
-    shutil.copyfile(src, dst)
-    sys.stdout.write("wrote %s (%dx%d, %d bytes)\n" % (dst, width, height, len(data)))
+    out_path = os.path.join(out_dir, "entry.png")
+    shutil.copyfile(SRC, out_path)
+    print("copied entry.png (%dx%d, %d bytes) -> %s" % (width, height, size, out_path))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

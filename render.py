@@ -1,38 +1,52 @@
 #!/usr/bin/env python3
-"""Render THE SUNDAY GAZETTE — news-image-20261122 v1 (build-time only; PIL ok here).
-main.py (the graded entrypoint) is stdlib-only and just copies entry.png.
+"""Build-time renderer for news-image-20261122 v2 (THE SUNDAY GAZETTE).
+
+Written from the RESEARCH.md + REFRESH-RESULT.md spec. stdlib + Pillow only
+at BUILD time; the shipped main.py is stdlib-only and only copies entry.png.
+Layout (1024x1024): masthead / 3 lead banners / 12 tiles / markets strip /
+"WHERE IT HAPPENED" world-map band (12 pins) / ALSO 2-col list / sources footer.
 """
 import os
 from PIL import Image, ImageDraw, ImageFont
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+FONTS = os.path.join(HERE, "fonts")
+OUT = os.path.join(HERE, "entry.png")
+
 W, H = 1024, 1024
-BASE = os.path.dirname(os.path.abspath(__file__))
-F = os.path.join(BASE, "fonts")
-PAPER = (246, 241, 231)
-INK = (26, 26, 26)
-RED = (163, 30, 30)
-BLUE = (31, 68, 110)
-TEAL = (24, 90, 86)
-GOLD = (176, 124, 30)
-PANEL = (255, 253, 246)
-GREY = (110, 108, 100)
-LIGHT = (232, 226, 212)
 
-def font(name, size):
-    return ImageFont.truetype(os.path.join(F, name), size)
+# ---- palette ----
+INK = (18, 24, 33)
+PAPER = (250, 247, 240)
+NAVY = (13, 27, 46)
+NAVY2 = (24, 48, 78)
+GOLD = (198, 154, 52)
+RED = (178, 34, 34)
+DARKRED = (139, 22, 22)
+TEAL = (14, 96, 98)
+GREEN = (27, 120, 62)
+ORANGE = (214, 96, 20)
+GREY = (90, 96, 104)
+LINE = (200, 192, 178)
+SEA = (178, 214, 228)
+LAND = (226, 214, 178)
+LAND2 = (206, 196, 158)
 
-SERIF_B = lambda s: font("DejaVuSerif-Bold.ttf", s)
-SANS = lambda s: font("DejaVuSans.ttf", s)
-SANS_B = lambda s: font("DejaVuSans-Bold.ttf", s)
+def fb(size):
+    return ImageFont.truetype(os.path.join(FONTS, "DejaVuSans-Bold.ttf"), size)
 
-img = Image.new("RGB", (W, H), PAPER)
-d = ImageDraw.Draw(img, "RGBA")
+def fr(size):
+    return ImageFont.truetype(os.path.join(FONTS, "DejaVuSans.ttf"), size)
 
-def wrap(text, fnt, width):
-    words, lines, cur = text.split(), [], ""
+def serifb(size):
+    return ImageFont.truetype(os.path.join(FONTS, "DejaVuSerif-Bold.ttf"), size)
+
+def wrap(draw, text, font, maxw):
+    words = text.split()
+    lines, cur = [], ""
     for w in words:
         t = (cur + " " + w).strip()
-        if fnt.getlength(t) <= width:
+        if draw.textlength(t, font=font) <= maxw:
             cur = t
         else:
             if cur:
@@ -42,522 +56,414 @@ def wrap(text, fnt, width):
         lines.append(cur)
     return lines
 
-def text(x, y, s, fnt, fill=INK, anchor="la"):
-    d.text((x, y), s, font=fnt, fill=fill, anchor=anchor)
+def text(draw, xy, s, font, fill, anchor="la"):
+    draw.text(xy, s, font=font, fill=fill, anchor=anchor)
 
-def para(x, y, s, fnt, width, fill=INK, leading=None, max_lines=None):
-    lines = wrap(s, fnt, width)
-    if max_lines:
-        lines = lines[:max_lines]
-    lh = leading or int(fnt.size * 1.22)
-    for i, ln in enumerate(lines):
-        d.text((x, y + i * lh), ln, font=fnt, fill=fill)
-    return y + len(lines) * lh
+def chip(draw, x, y, s, font, bg, fg=(255, 255, 255)):
+    w = int(draw.textlength(s, font=font)) + 14
+    h = font.size + 8
+    draw.rounded_rectangle([x, y, x + w, y + h], radius=4, fill=bg)
+    draw.text((x + w / 2, y + h / 2), s, font=font, fill=fg, anchor="mm")
+    return w, h
 
-def chip(x, y, s, fnt, bg=INK, fg=(255, 253, 246), pad=4):
-    w = fnt.getlength(s) + pad * 2
-    h = fnt.size + pad * 2 - 2
-    d.rounded_rectangle([x, y, x + w, y + h], radius=3, fill=bg)
-    d.text((x + pad, y + pad - 1), s, font=fnt, fill=fg)
-    return w
+def rrect(draw, box, fill=None, outline=None, width=1, radius=6):
+    draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
 
-def sky(x, y, w, h, top, bot):
-    for i in range(h):
-        t = i / max(1, h - 1)
-        c = tuple(int(top[k] + (bot[k] - top[k]) * t) for k in range(3))
-        d.line([(x, y + i), (x + w, y + i)], fill=c)
-
-def sun(x, y, r, core=(255, 236, 180), halo=(255, 214, 120)):
-    d.ellipse([x - r - 14, y - r - 14, x + r + 14, y + r + 14], fill=halo + (60,))
-    d.ellipse([x - r, y - r, x + r, y + r], fill=core)
-
-def flame(x, y, s=1.0):
-    # stylised flame: outer orange, inner yellow, core white
-    d.polygon([(x, y - 26 * s), (x + 11 * s, y - 4 * s), (x + 7 * s, y + 8 * s),
-               (x - 7 * s, y + 8 * s), (x - 11 * s, y - 4 * s)], fill=(230, 110, 30))
-    d.polygon([(x, y - 16 * s), (x + 7 * s, y - 1 * s), (x + 4 * s, y + 8 * s),
-               (x - 4 * s, y + 8 * s), (x - 7 * s, y - 1 * s)], fill=(245, 190, 60))
-    d.ellipse([x - 3.5 * s, y - 2 * s, x + 3.5 * s, y + 8 * s], fill=(255, 240, 180))
-
-def smoke(x, y, s=1.0, col=(90, 88, 84)):
-    for dx, dy, r in [(0, 0, 9), (8, -9, 11), (-7, -16, 12), (3, -26, 13), (-4, -36, 12)]:
-        d.ellipse([x + dx * s - r * s, y + dy * s - r * s,
-                   x + dx * s + r * s, y + dy * s + r * s], fill=col + (150,))
-
-def panel(x, y, w, h):
-    d.rectangle([x, y, x + w, y + h], fill=PANEL, outline=INK, width=1)
-
-# ---------------------------------------------------------------- masthead
-d.line([(8, 10), (1016, 10)], fill=INK, width=2)
-text(512, 16, "THE SUNDAY GAZETTE", SERIF_B(46), anchor="ma")
-text(8, 64, "SUNDAY 22 NOVEMBER 2026", SANS_B(13))
-text(1016, 64, "40 STORIES  •  5 CONTINENTS", SANS_B(13), anchor="ra")
-d.line([(8, 82), (1016, 82)], fill=INK, width=3)
-d.line([(8, 86), (1016, 86)], fill=INK, width=1)
-
-# ---------------------------------------------------------------- leads
-LX = [8, 344, 680]
-LW = 328
-LY, LH = 92, 200
-
-def lead_head(x, y, w, kicker, head, sub):
-    chip(x, y, kicker, SANS_B(11), bg=RED)
-    para(x, y + 24, head, SERIF_B(16), w, leading=19, max_lines=2)
-    para(x, y + 64, sub, SANS(10), w, leading=13, max_lines=2)
-
-# --- LEAD 1: COP31 conference hall, dawn light through windows
-x, y = LX[0], LY
-panel(x, y, LW, LH)
-hx, hy, hw, hh = x + 1, y + 1, LW - 2, 112
-sky(hx, hy, hw, hh, (58, 74, 96), (214, 176, 120))
-# tall windows with warm dawn light
-for i, wx in enumerate([14, 62, 110, 158, 206, 254]):
-    d.rectangle([hx + wx, hy + 10, hx + wx + 34, hy + 62], fill=(255, 214, 130), outline=(40, 40, 40), width=2)
-    d.line([(hx + wx + 17, hy + 10), (hx + wx + 17, hy + 62)], fill=(40, 40, 40), width=1)
-# floor + delegate rows (backs of heads, one natural light)
-d.rectangle([hx, hy + 62, hx + hw, hy + hh], fill=(74, 66, 58))
-for row, ry in enumerate([70, 84, 98]):
-    for cx in range(18, hw - 10, 26):
-        d.ellipse([hx + cx, hy + ry, hx + cx + 16, hy + ry + 15], fill=(30, 28, 26) if row % 2 else (52, 48, 44))
-        d.rectangle([hx + cx - 2, hy + ry + 14, hx + cx + 18, hy + ry + 20], fill=(30, 28, 26) if row % 2 else (52, 48, 44))
-# screen: draft with fossil fuels crossed out
-d.rectangle([hx + 96, hy + 66, hx + 232, hy + 112], fill=(250, 248, 240), outline=INK, width=2)
-text(hx + 164, hy + 70, "DRAFT TEXT", SANS_B(9), anchor="ma")
-text(hx + 164, hy + 82, "NO MENTION OF", SANS_B(10), anchor="ma")
-text(hx + 164, hy + 94, "FOSSIL FUELS", SANS_B(11), fill=RED, anchor="ma")
-# countdown clock chip
-chip(hx + 8, hy + 8, "VOTE 06:00 GMT TODAY", SANS_B(10), bg=RED)
-lead_head(x, y + 110, LW - 4, "LEAD 1  •  CLIMATE  •  ANTALYA",
-          "COP31: DEAL ON THE TABLE — VOTE DUE TODAY",
-          "Africa rejects funding; still no fossil-fuel mention.")
-
-# --- LEAD 2: the Gulf at night — Bahrain flame, tankers, missile arcs
-x, y = LX[1], LY
-panel(x, y, LW, LH)
-hx, hy, hw, hh = x + 1, y + 1, LW - 2, 112
-sky(hx, hy, hw, hh, (16, 22, 38), (52, 62, 84))
-# stars
-for sx, sy in [(20, 12), (60, 22), (120, 8), (180, 18), (240, 10), (300, 24), (90, 30), (270, 34)]:
-    d.ellipse([hx + sx, hy + sy, hx + sx + 2, hy + sy + 2], fill=(255, 255, 255))
-# sea
-d.rectangle([hx, hy + 62, hx + hw, hy + hh], fill=(24, 44, 66))
-for wx in range(0, hw, 34):
-    d.line([(hx + wx, hy + 96), (hx + wx + 18, hy + 96)], fill=(90, 130, 160), width=2)
-# Bahrain flame (left)
-d.rectangle([hx + 18, hy + 46, hx + 52, hy + 62], fill=(60, 58, 52))
-flame(hx + 35, hy + 44, 0.9)
-text(hx + 35, hy + 100, "BAHRAIN", SANS_B(9), fill=(255, 220, 160), anchor="ma")
-# tanker 1 (centre, bow hit, smoke)
-d.rectangle([hx + 120, hy + 66, hx + 210, hy + 82], fill=(120, 40, 30), outline=INK, width=1)
-d.rectangle([hx + 196, hy + 54, hx + 206, hy + 66], fill=(90, 88, 84))
-smoke(hx + 130, hy + 60, 0.7)
-flame(hx + 128, hy + 64, 0.6)
-text(hx + 165, hy + 100, "HORMUZ: 2 TANKERS HIT", SANS_B(9), fill=(255, 220, 160), anchor="ma")
-# missile arcs over Riyadh (right)
-for k, (ax, ay) in enumerate([(252, 30), (268, 22), (284, 28)]):
-    d.line([(hx + ax - 18, hy + ay + 12), (hx + ax + 2, hy + ay - 2)], fill=(255, 190, 90), width=2)
-    d.ellipse([hx + ax - 2, hy + ay - 5, hx + ax + 4, hy + ay + 1], fill=(255, 220, 140))
-text(hx + 268, hy + 100, "RIYADH", SANS_B(9), fill=(255, 220, 160), anchor="ma")
-lead_head(x, y + 110, LW - 4, "LEAD 2  •  WAR  •  THE GULF",
-          "THE GULF IGNITES — BAHRAIN, HORMUZ, RIYADH",
-          "Iran hits Bahrain; 2 tankers struck; 3 missiles down.")
-
-# --- LEAD 3: Bitcoin chart — fall to $55,130, bounce through $60,000
-x, y = LX[2], LY
-panel(x, y, LW, LH)
-hx, hy, hw, hh = x + 1, y + 1, LW - 2, 112
-d.rectangle([hx, hy, hx + hw, hy + hh], fill=(18, 26, 34))
-# grid
-for gy in range(hy + 16, hy + hh, 22):
-    d.line([(hx + 8, gy), (hx + hw - 8, gy)], fill=(60, 72, 84), width=1)
-# dashed $60,000 threshold
-for gx in range(hx + 10, hx + hw - 10, 12):
-    d.line([(gx, hy + 34), (gx + 7, hy + 34)], fill=(255, 200, 90), width=2)
-text(hx + 12, hy + 20, "$60,000", SANS_B(10), fill=(255, 200, 90))
-# chart line: 59k -> 55,130 low -> 60,207
-pts = [(14, 52), (60, 58), (100, 72), (140, 96), (180, 104), (220, 88), (260, 56), (300, 34)]
-pts = [(hx + px, hy + py) for px, py in pts]
-d.line(pts, fill=(90, 220, 160), width=3, joint="curve")
-d.ellipse([pts[4][0] - 4, pts[4][1] - 4, pts[4][0] + 4, pts[4][1] + 4], fill=(255, 90, 70), outline=(255, 255, 255), width=1)
-_lx = hx + 12
-text(_lx, hy + 100, "SAT LOW $55,130", SANS_B(9), fill=(255, 140, 120))
-text(_lx + SANS_B(9).getlength("SAT LOW $55,130"), hy + 100, "  \u2022  SUN 22 NOV  \u2022  FEAR & GREED 11", SANS_B(9), fill=(200, 210, 220))
-d.ellipse([pts[-1][0] - 4, pts[-1][1] - 4, pts[-1][0] + 4, pts[-1][1] + 4], fill=(90, 220, 160), outline=(255, 255, 255), width=1)
-text(pts[-1][0] - 66, pts[-1][1] - 16, "$60,207", SANS_B(10), fill=(90, 220, 160))
-lead_head(x, y + 110, LW - 4, "LEAD 3  •  MARKETS  •  CRYPTO",
-          "BITCOIN BACK ABOVE $60,000",
-          "After Saturday's two-year low, the bounce.")
-
-# ---------------------------------------------------------------- tiles
-TX = [8, 262, 516, 770]
-TW = 246
-TY = [300, 454, 608]
-TH = 144
-
-def tile(x, y, w, place, head, sub, src):
-    panel(x, y, w, TH)
-    ix, iy, iw, ih = x + 1, y + 1, w - 2, 88
-    return ix, iy, iw, ih
-
-def tile_text(x, y, w, head, sub, src):
-    para(x + 6, y + 94, head, SANS_B(12), w - 12, leading=14, max_lines=2)
-    para(x + 6, y + 122, sub, SANS(10), w - 60, leading=12, max_lines=1)
-    text(x + w - 6, y + 124, src, SANS_B(8), fill=GREY, anchor="ra")
-
-def place_tag(ix, iy, s):
-    chip(ix + 5, iy + 5, s, SANS_B(9), bg=INK)
-
-def person(ix, iy, px, py, s=1.0, skin=(214, 164, 120), shirt=(60, 90, 140)):
-    d.ellipse([ix + px - 7 * s, iy + py - 8 * s, ix + px + 7 * s, iy + py + 8 * s], fill=skin)
-    d.polygon([(ix + px - 11 * s, iy + py + 22 * s), (ix + px - 8 * s, iy + py + 7 * s),
-               (ix + px + 8 * s, iy + py + 7 * s), (ix + px + 11 * s, iy + py + 22 * s)], fill=shirt)
-
-# ---- ROW A
-# T4 Indonesia factory fire
-x, y = TX[0], TY[0]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (44, 40, 44), (150, 90, 60))
-smoke(ix + 120, iy + 44, 0.8)
-d.rectangle([ix, iy + 58, ix + iw, iy + ih], fill=(58, 50, 46))
-d.rectangle([ix + 20, iy + 34, ix + 130, iy + 66], fill=(96, 84, 70), outline=INK, width=2)
-d.rectangle([ix + 34, iy + 44, ix + 52, iy + 66], fill=(255, 170, 60))
-d.rectangle([ix + 66, iy + 44, ix + 84, iy + 66], fill=(255, 170, 60))
-d.rectangle([ix + 98, iy + 44, ix + 116, iy + 66], fill=(255, 170, 60))
-flame(ix + 43, iy + 42, 0.8); flame(ix + 75, iy + 42, 0.8); flame(ix + 107, iy + 42, 0.8)
-d.rectangle([ix + 150, iy + 52, ix + 226, iy + 66], fill=(150, 40, 30))
-text(ix + 188, iy + 68, "RESCUE ONGOING", SANS_B(9), fill=(255, 220, 160), anchor="ma")
-place_tag(ix, iy, "CIKANDE, INDONESIA")
-tile_text(x, y, TW, "FACTORY FIRE: 3 DEAD, 36 MISSING",
-          "Search goes on after the blaze", "REUTERS")
-
-# T5 F1 Las Vegas
-x, y = TX[1], TY[0]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (20, 16, 44), (90, 40, 110))
-sun(ix + 205, iy + 22, 12, core=(255, 200, 120))
-d.rectangle([ix, iy + 58, ix + iw, iy + ih], fill=(40, 38, 44))
-for bx in range(0, iw, 24):
-    d.line([(ix + bx, iy + 58), (ix + bx, iy + 88)], fill=(255, 210, 90), width=1)
-# three race cars with light trails
-for cx, cy, col in [(40, 66, (220, 30, 30)), (110, 74, (40, 120, 220)), (180, 70, (240, 240, 240))]:
-    d.line([(ix + cx - 34, iy + cy + 4), (ix + cx, iy + cy + 4)], fill=(255, 220, 120), width=2)
-    d.polygon([(ix + cx - 16, iy + cy), (ix + cx + 14, iy + cy), (ix + cx + 18, iy + cy + 8),
-               (ix + cx - 18, iy + cy + 8)], fill=col, outline=INK, width=1)
-    d.ellipse([ix + cx - 10, iy + cy + 8, ix + cx - 4, iy + cy + 14], fill=INK)
-    d.ellipse([ix + cx + 6, iy + cy + 8, ix + cx + 12, iy + cy + 14], fill=INK)
-chip(ix + iw - 108, iy + 6, "RACE UNDERWAY", SANS_B(10), bg=RED)
-place_tag(ix, iy, "LAS VEGAS")
-tile_text(x, y, TW, "F1: VERSTAPPEN LEADS, LAP 22/50",
-          "No winner yet — race still running", "SPORTS")
-
-# T6 Catherine, Princess of Wales
-x, y = TX[2], TY[0]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (120, 140, 160), (220, 205, 185))
-sun(ix + 200, iy + 20, 14)
-d.rectangle([ix, iy + 60, ix + iw, iy + ih], fill=(110, 96, 80))
-# documentary camera on tripod
-d.rectangle([ix + 24, iy + 30, ix + 66, iy + 52], fill=(40, 40, 44), outline=INK, width=1)
-d.ellipse([ix + 62, iy + 34, ix + 74, iy + 48], fill=(150, 190, 220), outline=INK, width=1)
-d.line([(ix + 45, iy + 52), (ix + 34, iy + 86)], fill=INK, width=3)
-d.line([(ix + 45, iy + 52), (ix + 56, iy + 86)], fill=INK, width=3)
-d.line([(ix + 45, iy + 52), (ix + 45, iy + 86)], fill=INK, width=3)
-# seated figure, warm side light
-person(ix, iy, 150, 42, 1.6, skin=(216, 170, 128), shirt=(96, 60, 90))
-d.ellipse([ix + 128, iy + 28, ix + 172, iy + 56], fill=(70, 50, 40))
-d.ellipse([ix + 134, iy + 32, ix + 166, iy + 54], fill=(216, 170, 128))
-place_tag(ix, iy, "LONDON")
-tile_text(x, y, TW, "CATHERINE SPEAKS OPENLY ON CANCER",
-          "In a new BBC documentary", "BBC")
-
-# T7 teen gamer helps FBI
-x, y = TX[3], TY[0]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (30, 44, 70), (90, 110, 150))
-# game screen glow
-d.rectangle([ix + 130, iy + 12, ix + 228, iy + 62], fill=(16, 22, 34), outline=(120, 180, 255), width=2)
-d.rectangle([ix + 138, iy + 20, ix + 178, iy + 54], fill=(40, 90, 160))
-d.polygon([(ix + 150, iy + 26), (ix + 166, iy + 54), (ix + 150, iy + 54)], fill=(255, 220, 120))
-d.polygon([(ix + 196, iy + 26), (ix + 210, iy + 40), (ix + 196, iy + 54)], fill=(120, 220, 120))
-text(ix + 179, iy + 64, "ONLINE GAME", SANS_B(8), fill=(180, 210, 240), anchor="ma")
-# teen with headset
-person(ix, iy, 66, 40, 1.5, skin=(214, 164, 120), shirt=(40, 120, 90))
-d.arc([ix + 52, iy + 28, ix + 80, iy + 50], 180, 360, fill=INK, width=3)
-d.rectangle([ix + 50, iy + 38, ix + 56, iy + 48], fill=INK)
-d.rectangle([ix + 76, iy + 38, ix + 82, iy + 48], fill=INK)
-# FBI badge chip
-chip(ix + 96, iy + 70, "FBI", SANS_B(11), bg=(31, 68, 110))
-place_tag(ix, iy, "USA")
-tile_text(x, y, TW, "TEEN GAMER, 16, HELPS FBI SAVE MISSING GIRL",
-          "They met in an online game", "BBC")
-
-# ---- ROW B
-# T8 US denies F-16 claim
-x, y = TX[0], TY[1]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (24, 34, 56), (120, 130, 150))
-sun(ix + 30, iy + 20, 12)
-# jet silhouette
-d.polygon([(ix + 90, iy + 44), (ix + 170, iy + 44), (ix + 190, iy + 50), (ix + 170, iy + 56),
-           (ix + 90, iy + 56), (ix + 100, iy + 50)], fill=(60, 64, 70))
-d.polygon([(ix + 120, iy + 44), (ix + 132, iy + 30), (ix + 140, iy + 44)], fill=(60, 64, 70))
-d.polygon([(ix + 120, iy + 56), (ix + 132, iy + 70), (ix + 140, iy + 56)], fill=(60, 64, 70))
-d.line([(ix + 60, iy + 50), (ix + 90, iy + 50)], fill=(200, 210, 220), width=2)
-# duelling claim labels
-chip(ix + 12, iy + 66, "IRAN: JET HIT", SANS_B(9), bg=RED)
-chip(ix + 128, iy + 66, "US: NOT HIT", SANS_B(9), bg=BLUE)
-place_tag(ix, iy, "THE GULF")
-tile_text(x, y, TW, "US DENIES IRAN CLAIM OF F-16 HIT",
-          "Tehran said a missile hit the jet", "CNA")
-
-# T9 England rugby record win
-x, y = TX[1], TY[1]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (90, 130, 90), (190, 215, 170))
-d.rectangle([ix, iy + 58, ix + iw, iy + ih], fill=(52, 110, 62))
-for gy in range(iy + 62, iy + ih, 10):
-    d.line([(ix, gy), (ix + iw, gy)], fill=(70, 130, 78), width=1)
-d.line([(ix + 120, iy + 58), (ix + 120, iy + 88)], fill=(255, 255, 255), width=2)
-# rugby ball mid-flight + posts
-d.ellipse([ix + 88, iy + 26, ix + 148, iy + 52], fill=(200, 170, 110), outline=INK, width=2)
-d.line([(ix + 118, iy + 26), (ix + 118, iy + 52)], fill=INK, width=2)
-d.line([(ix + 196, iy + 18), (ix + 196, iy + 58)], fill=(255, 255, 255), width=3)
-d.line([(ix + 226, iy + 18), (ix + 226, iy + 58)], fill=(255, 255, 255), width=3)
-d.line([(ix + 196, iy + 40), (ix + 226, iy + 40)], fill=(255, 255, 255), width=3)
-person(ix, iy, 60, 52, 1.4, skin=(200, 150, 110), shirt=(255, 255, 255))
-place_tag(ix, iy, "LONDON")
-tile_text(x, y, TW, "ENGLAND'S RECORD WIN OVER NEW ZEALAND",
-          "Nations Championship", "BBC")
-
-# T10 France into final
-x, y = TX[2], TY[1]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (70, 90, 150), (200, 205, 220))
-d.rectangle([ix, iy + 58, ix + iw, iy + ih], fill=(52, 110, 62))
-# two flags facing off
-d.rectangle([ix + 24, iy + 18, ix + 92, iy + 54], fill=(255, 255, 255), outline=INK, width=1)
-d.rectangle([ix + 24, iy + 18, ix + 47, iy + 54], fill=(0, 60, 160))
-d.rectangle([ix + 70, iy + 18, ix + 92, iy + 54], fill=(220, 40, 40))
-d.rectangle([ix + 154, iy + 18, ix + 222, iy + 54], fill=(0, 110, 60), outline=INK, width=1)
-text(ix + 188, iy + 26, "SA", SANS_B(16), fill=(255, 220, 60), anchor="ma")
-text(ix + 123, iy + 24, "VS", SERIF_B(18), anchor="ma")
-d.ellipse([ix + 88, iy + 60, ix + 148, iy + 86], fill=(200, 170, 110), outline=INK, width=2)
-place_tag(ix, iy, "PARIS")
-tile_text(x, y, TW, "FRANCE INTO FINAL VS SPRINGBOKS",
-          "Nations final next weekend", "BBC")
-
-# T11 Washington hair $4,000
-x, y = TX[3], TY[1]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (120, 100, 80), (215, 195, 160))
-sun(ix + 210, iy + 20, 12)
-d.rectangle([ix, iy + 60, ix + iw, iy + ih], fill=(120, 88, 60))
-# auction podium + gavel
-d.rectangle([ix + 30, iy + 44, ix + 130, iy + 66], fill=(90, 66, 44), outline=INK, width=1)
-d.rectangle([ix + 44, iy + 66, ix + 116, iy + 74], fill=(70, 50, 34))
-d.polygon([(ix + 150, iy + 40), (ix + 190, iy + 28), (ix + 196, iy + 36), (ix + 156, iy + 48)], fill=(60, 44, 30))
-d.line([(ix + 178, iy + 42), (ix + 196, iy + 62)], fill=(60, 44, 30), width=4)
-# framed hair lock + price tag
-d.rectangle([ix + 160, iy + 52, ix + 220, iy + 84], fill=(250, 248, 240), outline=(176, 124, 30), width=2)
-d.arc([ix + 176, iy + 56, ix + 204, iy + 80], 0, 360, fill=(120, 100, 70), width=2)
-text(ix + 190, iy + 58, "$4,000", SANS_B(11), fill=RED, anchor="ma")
-place_tag(ix, iy, "USA")
-tile_text(x, y, TW, "A LOCK OF WASHINGTON'S HAIR: $4,000",
-          "Sold at auction", "BBC")
-
-# ---- ROW C
-# T12 Peter Fluck obituary
-x, y = TX[0], TY[2]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (60, 60, 80), (180, 170, 160))
-d.rectangle([ix, iy + 56, ix + iw, iy + ih], fill=(70, 60, 58))
-# puppet theatre stage
-d.rectangle([ix + 60, iy + 14, ix + 186, iy + 66], fill=(140, 30, 30), outline=INK, width=2)
-d.rectangle([ix + 66, iy + 20, ix + 180, iy + 60], fill=(30, 28, 34))
-d.ellipse([ix + 104, iy + 28, ix + 142, iy + 58], fill=(216, 170, 128))
-d.ellipse([ix + 112, iy + 38, ix + 120, iy + 44], fill=INK)
-d.ellipse([ix + 126, iy + 38, ix + 134, iy + 44], fill=INK)
-d.arc([ix + 112, iy + 44, ix + 134, iy + 56], 0, 180, fill=INK, width=2)
-d.rectangle([ix + 60, iy + 62, ix + 186, iy + 70], fill=(176, 124, 30))
-place_tag(ix, iy, "LONDON")
-tile_text(x, y, TW, "SPITTING IMAGE CO-CREATOR DIES AT 85",
-          "Peter Fluck, satirist", "BBC")
-
-# T13 Bradford councillor stabbed
-x, y = TX[1], TY[2]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (100, 110, 130), (200, 200, 195))
-d.rectangle([ix, iy + 56, ix + iw, iy + ih], fill=(90, 88, 84))
-# courthouse columns
-for cx in [30, 80, 130, 180]:
-    d.rectangle([ix + cx, iy + 18, ix + cx + 18, iy + 62], fill=(220, 214, 198), outline=INK, width=1)
-d.rectangle([ix + 18, iy + 10, ix + 212, iy + 20], fill=(200, 192, 172), outline=INK, width=1)
-d.rectangle([ix + 18, iy + 62, ix + 212, iy + 70], fill=(200, 192, 172), outline=INK, width=1)
-chip(ix + 66, iy + 76, "CHARGED", SANS_B(10), bg=RED)
-place_tag(ix, iy, "BRADFORD")
-tile_text(x, y, TW, "MAN CHARGED AFTER COUNCILLOR STABBED",
-          "Attempted murder charge", "BBC")
-
-# T14 Iraq Hartha power plant fire
-x, y = TX[2], TY[2]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (50, 44, 44), (160, 100, 60))
-smoke(ix + 150, iy + 44, 0.8)
-d.rectangle([ix, iy + 58, ix + iw, iy + ih], fill=(62, 54, 48))
-# cooling towers + plant
-d.polygon([(ix + 30, iy + 30), (ix + 44, iy + 30), (ix + 48, iy + 62), (ix + 26, iy + 62)], fill=(180, 172, 158), outline=INK, width=1)
-d.polygon([(ix + 80, iy + 30), (ix + 94, iy + 30), (ix + 98, iy + 62), (ix + 76, iy + 62)], fill=(180, 172, 158), outline=INK, width=1)
-d.rectangle([ix + 130, iy + 40, ix + 210, iy + 62], fill=(96, 84, 70), outline=INK, width=1)
-flame(ix + 150, iy + 38, 0.9); flame(ix + 190, iy + 38, 0.7)
-place_tag(ix, iy, "BASRA, IRAQ")
-tile_text(x, y, TW, "POWER PLANT FIRE: 4 DEAD, 35 HURT",
-          "Gas pipeline involved", "REUTERS")
-
-# T15 Manipur toxic alcohol
-x, y = TX[3], TY[2]
-ix, iy, iw, ih = tile(x, y, TW, None, None, None, None)
-sky(ix, iy, iw, ih, (70, 80, 90), (190, 185, 175))
-d.rectangle([ix, iy + 56, ix + iw, iy + ih], fill=(110, 100, 88))
-# bottles + hospital cross
-for bx, bh in [(40, 34), (70, 44), (100, 30)]:
-    d.rectangle([ix + bx, iy + 62 - bh, ix + bx + 16, iy + 62], fill=(40, 90, 50), outline=INK, width=1)
-    d.rectangle([ix + bx + 5, iy + 54 - bh, ix + bx + 11, iy + 62 - bh], fill=(40, 90, 50))
-d.rectangle([ix + 150, iy + 14, ix + 222, iy + 62], fill=(250, 250, 248), outline=INK, width=1)
-d.rectangle([ix + 180, iy + 22, ix + 192, iy + 54], fill=RED)
-d.rectangle([ix + 168, iy + 34, ix + 204, iy + 46], fill=RED)
-place_tag(ix, iy, "MANIPUR, INDIA")
-tile_text(x, y, TW, "TOXIC ALCOHOL: 11 DEAD, 180+ IN HOSPITAL",
-          "Suspected methanol poisoning", "REUTERS")
-
-# ---------------------------------------------------------------- market strip
-MX, MY, MW, MH = 8, 760, 1008, 36
-d.rectangle([MX, MY, MX + MW, MY + MH], fill=(24, 30, 38), outline=INK, width=1)
-text(MX + 10, MY + 11, "MARKETS", SANS_B(13), fill=(255, 220, 140))
-# mini falling sparkline for stocks
-sx0, sy0 = MX + 108, MY + 8
-d.line([(sx0, sy0 + 4), (sx0 + 18, sy0 + 8), (sx0 + 36, sy0 + 16), (sx0 + 54, sy0 + 22)],
-       fill=(255, 120, 100), width=2)
-text(MX + 178, MY + 11, "FRI 20 NOV CLOSE:  S&P 500 -3.70%  •  NASDAQ -5.28%  •  DOW -1.93%  •  ANT $88.91  •  BRENT $92.57",
-     SANS_B(11), fill=(235, 235, 230))
-text(MX + MW - 10, MY + 11, "BTC SUN 22 NOV $60,207", SANS_B(11), fill=(90, 220, 160), anchor="ra")
-
-# ---------------------------------------------------------------- bottom band: map + ALSO
-BY = 804
-# ---- map panel
-d.rectangle([8, BY, 560, 996], fill=PANEL, outline=INK, width=1)
-text(16, BY + 6, "WHERE IT HAPPENED", SANS_B(13))
-text(552, BY + 6, "12 PINS", SANS_B(11), fill=GREY, anchor="ra")
-d.line([(16, BY + 24), (552, BY + 24)], fill=INK, width=1)
-
-MAP_X, MAP_Y, MAP_W, MAP_H = 16, 834, 536, 128
-LAT_TOP, LAT_BOT = 84.0, -58.0
-
-def ll(lon, lat):
-    px = MAP_X + (lon + 180.0) / 360.0 * MAP_W
-    py = MAP_Y + (LAT_TOP - lat) / (LAT_TOP - LAT_BOT) * MAP_H
-    return px, py
-
-d.rectangle([MAP_X, MAP_Y, MAP_X + MAP_W, MAP_Y + MAP_H], fill=(222, 232, 235), outline=GREY, width=1)
-# graticule
-for lon in range(-150, 181, 30):
-    x0, _ = ll(lon, 0)
-    d.line([(x0, MAP_Y), (x0, MAP_Y + MAP_H)], fill=(200, 212, 216), width=1)
-for lat in range(-30, 61, 30):
-    _, y0 = ll(0, lat)
-    d.line([(MAP_X, y0), (MAP_X + MAP_W, y0)], fill=(200, 212, 216), width=1)
-
-NA = [(-168,66),(-162,60),(-158,58),(-152,60),(-145,60),(-140,60),(-135,58),(-130,54),(-126,49),(-124,40),(-120,34),(-114,29),(-110,24),(-105,20),(-100,17),(-95,16),(-92,15),(-88,13),(-85,11),(-82,9),(-80,8),(-79,9),(-83,9),(-87,13),(-90,14),(-91,18),(-90,21),(-87,21),(-84,24),(-82,28),(-81,31),(-80,32),(-76,35),(-75,39),(-73,41),(-70,42),(-68,44),(-65,44),(-60,46),(-55,47),(-60,50),(-65,50),(-65,55),(-60,55),(-55,52),(-60,49),(-64,58),(-68,58),(-72,62),(-78,62),(-85,66),(-90,68),(-95,69),(-110,68),(-125,70),(-140,70),(-155,71),(-165,68)]
-SA = [(-79,9),(-77,4),(-80,-3),(-81,-6),(-78,-10),(-75,-15),(-72,-18),(-70,-24),(-70,-30),(-72,-37),(-73,-44),(-74,-50),(-70,-54),(-66,-55),(-68,-50),(-66,-45),(-62,-40),(-58,-34),(-52,-32),(-48,-28),(-41,-23),(-39,-17),(-35,-8),(-35,-5),(-38,-3),(-42,-2),(-48,0),(-52,4),(-55,6),(-59,8),(-62,10),(-66,11),(-71,12),(-75,10),(-77,7)]
-AF = [(-6,35),(-10,31),(-15,27),(-17,21),(-17,15),(-16,12),(-13,8),(-8,5),(-4,5),(0,6),(4,6),(7,4),(9,4),(9,-1),(12,-5),(13,-10),(12,-15),(13,-19),(15,-23),(17,-28),(19,-33),(25,-34),(30,-31),(33,-26),(36,-21),(39,-16),(40,-11),(41,-5),(42,0),(46,4),(51,11),(48,11),(44,12),(42,12),(40,15),(38,18),(37,21),(35,24),(34,27),(33,30),(31,32),(28,32),(24,32),(20,32),(16,32),(12,33),(10,37),(6,37),(2,36),(-2,35)]
-EU = [(-10,36),(-9,38),(-9,43),(-3,44),(-1,46),(-4,48),(-2,49),(0,51),(2,53),(5,53),(8,55),(8,57),(10,58),(6,58),(5,60),(6,62),(10,64),(12,66),(16,68),(20,70),(25,71),(29,71),(31,70),(30,68),(33,67),(36,66),(40,65),(43,63),(44,60),(44,57),(42,55),(39,53),(37,50),(35,47),(33,45),(30,46),(28,44),(26,43),(23,40),(22,38),(23,36),(26,36),(28,37),(30,36),(33,36),(36,36),(35,34),(33,31),(30,31),(30,36),(28,36),(26,38),(24,39),(22,40),(21,42),(19,43),(16,44),(13,45),(10,44),(8,43),(5,42),(3,42),(0,40),(-2,37),(-5,36),(-8,36)]
-UK = [(-5,50),(-3,53),(-5,56),(-3,58),(-1,57),(0,53),(1,51),(-2,51)]
-IE = [(-10,52),(-8,55),(-6,55),(-6,52),(-8,51)]
-AS = [(29,41),(35,42),(40,44),(45,46),(50,48),(55,50),(60,52),(65,54),(70,57),(75,62),(80,66),(85,70),(90,72),(95,74),(100,75),(105,76),(110,75),(115,73),(120,72),(125,71),(130,71),(135,71),(140,72),(145,71),(150,70),(155,69),(160,67),(165,65),(170,66),(170,62),(165,60),(162,58),(160,55),(158,52),(156,50),(152,48),(148,45),(144,44),(142,41),(140,38),(138,35),(136,33),(134,31),(132,30),(130,28),(128,25),(126,23),(124,21),(122,19),(120,17),(118,15),(116,12),(114,10),(112,8),(110,5),(108,3),(106,1),(104,1),(102,3),(100,6),(99,9),(100,12),(102,14),(104,15),(106,17),(108,19),(106,21),(104,23),(102,24),(100,22),(98,20),(96,18),(94,17),(92,21),(90,22),(88,21),(86,20),(84,18),(82,16),(80,13),(79,9),(77,8),(76,10),(75,13),(74,17),(73,20),(71,21),(69,22),(67,24),(65,25),(62,25),(60,25),(58,26),(57,27),(56,27),(54,26),(52,25),(51,28),(50,29),(49,30),(48,29),(48,27),(50,26),(52,25),(54,24),(56,24),(58,23),(59,22),(58,20),(56,18),(54,17),(52,15),(50,14),(48,13),(45,12),(43,12),(42,15),(41,18),(40,20),(39,21),(38,24),(37,27),(36,29),(35,29),(34,28),(35,31),(36,36),(33,36),(30,36)]
-AU = [(113,-22),(114,-30),(115,-33),(118,-35),(124,-33),(129,-32),(132,-32),(135,-35),(138,-35),(140,-38),(145,-38),(147,-39),(150,-37),(153,-32),(153,-27),(150,-22),(146,-19),(142,-15),(142,-11),(137,-12),(135,-15),(132,-12),(130,-13),(126,-14),(122,-17),(118,-20)]
-LAND = (216, 203, 176)
-for poly in (NA, SA, AF, EU, UK, IE, AS, AU):
-    d.polygon([ll(lo, la) for lo, la in poly], fill=LAND, outline=(90, 80, 60), width=1)
-# islands: Indonesia, Japan, Philippines, Madagascar, NZ
-for lo, la, r in [(100,-2,4),(105,-6,4),(110,-7,4),(115,-8,4),(120,-9,3),(125,-8,3),(130,-3,3),(135,-4,3),(140,-5,3),
-                  (130,31,3),(133,34,3),(136,36,3),(139,38,3),(141,41,3),(141,44,3),
-                  (120,14,3),(122,16,3),(124,11,3),(47,-16,3),(48,-20,3),
-                  (167,-45,3),(170,-42,3),(174,-39,3),(176,-38,3)]:
-    cx, cy = ll(lo, la)
-    d.ellipse([cx - r, cy - r * 0.6, cx + r, cy + r * 0.6], fill=LAND, outline=(90, 80, 60), width=1)
-
-PINS = [(1, 30.7, 36.9, "ANTALYA"), (2, 50.6, 26.2, "BAHRAIN"), (3, 46.7, 24.7, "RIYADH"),
-        (5, -115.14, 36.17, "LAS VEGAS"), (6, 174.78, -41.29, "WELLINGTON"),
-        (7, 106.3, -6.2, "CIKANDE"), (8, -108.5, 25.6, "GUASAVE"),
-        (9, 26.5, 60.2, "FINLAND"), (10, 30.52, 50.45, "KYIV"),
-        (11, -76.0, -11.2, "JUNIN"), (12, 6.3, 4.8, "BAYELSA")]
-OFF = {1: (-52, 8), 2: (8, -16), 3: (8, 8), 5: (-52, -14), 6: (-62, -4), 7: (6, 8),
-       8: (-58, 8), 9: (-48, -12), 10: (10, -4), 11: (-46, 8), 12: (8, 6)}
-for n, lon, lat, name in PINS:
-    px, py = ll(lon, lat)
-    px = min(max(px, MAP_X + 9), MAP_X + MAP_W - 10)
-    py = min(max(py, MAP_Y + 9), MAP_Y + MAP_H - 9)
-    d.ellipse([px - 8, py - 8, px + 8, py + 8], fill=RED, outline=(255, 255, 255), width=1)
-    text(px, py - 6, str(n), SANS_B(10), fill=(255, 255, 255), anchor="ma")
-    dx, dy = OFF[n]
-    text(px + dx, py + dy, name, SANS_B(8), fill=INK)
-# Mercury pin 4 — space, top-right corner
-mx0, my0 = MAP_X + MAP_W - 112, MAP_Y + 8
-d.ellipse([mx0, my0, mx0 + 22, my0 + 22], fill=(200, 120, 60), outline=INK, width=1)
-d.ellipse([mx0 + 5, my0 + 6, mx0 + 11, my0 + 11], fill=(150, 80, 40))
-d.ellipse([mx0 + 13, my0 + 13, mx0 + 17, my0 + 16], fill=(150, 80, 40))
-d.ellipse([mx0 + 6, my0 + 6, mx0 + 24, my0 + 24], outline=(90, 80, 60), width=1)
-text(mx0 + 30, my0 + 2, "4 MERCURY", SANS_B(9), fill=INK)
-text(mx0 + 30, my0 + 14, "BepiColombo", SANS(8), fill=GREY)
-# legend
-text(16, MAP_Y + MAP_H + 8, "EUROPE 3  •  ASIA 3  •  N. AMERICA 2  •  S. AMERICA 1  •  AFRICA 1  •  OCEANIA 1  •  SPACE 1",
-     SANS_B(10), fill=GREY)
-text(16, MAP_Y + MAP_H + 24, "Pins match the numbered stories on this page.",
-     SANS(9), fill=GREY)
-
-# ---- ALSO panel
-d.rectangle([568, BY, 1016, 996], fill=PANEL, outline=INK, width=1)
-text(578, BY + 6, "ALSO", SANS_B(13))
-d.line([(578, BY + 24), (1006, BY + 24)], fill=INK, width=1)
-ALSO_L = [
-    ("16", "BepiColombo in Mercury orbit"),
-    ("17", "\u201cEl Chapo Isidro\u201d caught \u2014 $5m"),
-    ("18", "FBI probes NCIC database hack"),
-    ("19", "Sparta II hit by drones, Finland"),
-    ("20", "Zelensky: Crimea strike \u201cfair\u201d"),
-    ("21", "Cricket: India 720/9, record vs NZ"),
-    ("22", "Huawei jury STILL OUT"),
-    ("23", "Nigeria boat: \u226524 dead"),
-    ("24", "Peru quake: 1 dead, 16 injured"),
-    ("25", "UN \u201ckiller robot\u201d talks: no rules"),
-    ("26", "Lisbon march over living costs"),
-    ("27", "Virginia measles death since 1978"),
+# ---- simplified continent polygons (lon, lat) ----
+CONTINENTS = [
+    # North America
+    [(-168, 66), (-150, 70), (-135, 69), (-125, 71), (-112, 68), (-96, 69), (-86, 66),
+     (-81, 69), (-76, 62), (-65, 60), (-56, 52), (-60, 47), (-65, 44), (-70, 42),
+     (-74, 39), (-76, 35), (-80, 32), (-81, 26), (-84, 30), (-89, 29), (-91, 19),
+     (-94, 17), (-97, 16), (-102, 18), (-105, 20), (-110, 23), (-114, 28), (-117, 33),
+     (-122, 37), (-124, 42), (-124, 48), (-130, 54), (-135, 58), (-145, 60), (-155, 58),
+     (-162, 58), (-166, 60), (-168, 66)],
+    # Greenland
+    [(-58, 64), (-52, 60), (-44, 60), (-40, 64), (-32, 68), (-22, 70), (-20, 74),
+     (-25, 76), (-32, 78), (-45, 80), (-55, 76), (-58, 72), (-60, 68)],
+    # South America
+    [(-80, 9), (-77, 7), (-77, 4), (-80, -3), (-81, -6), (-77, -12), (-72, -18),
+     (-70, -23), (-70, -30), (-72, -37), (-73, -44), (-70, -52), (-66, -55),
+     (-65, -47), (-62, -41), (-58, -38), (-52, -33), (-48, -28), (-41, -23),
+     (-39, -17), (-35, -9), (-35, -6), (-40, -3), (-44, -2), (-50, 0), (-52, 4),
+     (-57, 6), (-62, 9), (-68, 11), (-72, 12), (-76, 10), (-79, 9)],
+    # Africa
+    [(-6, 35), (0, 36), (10, 37), (11, 34), (20, 32), (30, 31), (32, 31), (35, 28),
+     (34, 27), (37, 24), (38, 22), (40, 18), (43, 12), (48, 11), (51, 10), (47, 5),
+     (44, 0), (41, -4), (40, -10), (38, -15), (36, -18), (33, -25), (31, -29),
+     (28, -33), (25, -34), (20, -35), (18, -32), (17, -29), (14, -22), (12, -18),
+     (12, -10), (9, -1), (9, 4), (4, 6), (-8, 5), (-13, 8), (-15, 11), (-17, 15),
+     (-17, 21), (-16, 25), (-13, 28), (-10, 31), (-6, 35)],
+    # Eurasia
+    [(-10, 36), (-9, 38), (-9, 43), (-2, 44), (-2, 48), (-4, 50), (-1, 51), (2, 51),
+     (4, 53), (7, 54), (8, 57), (10, 59), (6, 58), (5, 60), (6, 62), (10, 64),
+     (13, 66), (18, 69), (21, 70), (25, 71), (30, 70), (35, 68), (40, 67), (45, 68),
+     (50, 69), (55, 69), (60, 69), (65, 70), (70, 72), (75, 72), (80, 73), (85, 74),
+     (90, 75), (95, 76), (100, 77), (105, 77), (110, 74), (115, 73), (120, 73),
+     (125, 72), (130, 72), (135, 71), (140, 72), (145, 72), (150, 70), (155, 69),
+     (160, 69), (165, 66), (170, 66), (178, 65), (173, 64), (170, 60), (165, 60),
+     (162, 56), (158, 52), (156, 51), (150, 59), (145, 59), (142, 55), (141, 50),
+     (140, 45), (137, 43), (135, 43), (132, 43), (130, 42), (127, 40), (125, 39),
+     (122, 38), (120, 35), (120, 32), (118, 28), (115, 23), (112, 22), (110, 20),
+     (109, 18), (108, 12), (105, 9), (103, 8), (100, 7), (98, 9), (97, 10),
+     (95, 16), (93, 17), (92, 21), (89, 22), (88, 22), (86, 20), (83, 18), (80, 15),
+     (80, 13), (77, 8), (76, 10), (75, 12), (74, 15), (72, 20), (70, 22), (68, 23),
+     (66, 25), (62, 25), (58, 25), (56, 26), (52, 26), (50, 29), (48, 30), (46, 30),
+     (44, 29), (42, 29), (39, 30), (36, 36), (34, 36), (30, 36), (27, 37), (26, 38),
+     (23, 36), (22, 37), (19, 40), (16, 38), (15, 40), (13, 42), (12, 44), (10, 44),
+     (8, 44), (6, 43), (3, 43), (1, 41), (0, 39), (-1, 37), (-3, 36), (-6, 36), (-9, 37)],
+    # UK
+    [(-5, 50), (-4, 50), (-3, 53), (-5, 54), (-5, 56), (-4, 58), (-3, 58), (-2, 57),
+     (-1, 57), (0, 55), (0, 53), (1, 51), (-1, 51), (-3, 50)],
+    # Japan
+    [(130, 31), (131, 31), (132, 33), (134, 34), (135, 34), (137, 35), (138, 35),
+     (139, 36), (140, 36), (141, 39), (141, 41), (142, 42), (143, 42), (144, 43),
+     (145, 44), (143, 44), (142, 42), (141, 40), (140, 39), (139, 37), (138, 36),
+     (136, 35), (134, 34), (132, 33), (131, 32)],
+    # SE Asia islands (Indonesia / Borneo / New Guinea)
+    [(95, 5), (98, 3), (100, 0), (102, -2), (104, -3), (106, -6), (108, -7), (110, -7),
+     (112, -7), (114, -8), (116, -9), (118, -9), (120, -10), (119, -9), (122, -9),
+     (124, -10), (126, -9), (128, -8), (130, -5), (132, -4), (131, -2), (134, -2),
+     (136, -2), (138, -3), (140, -5), (141, -8), (140, -8), (138, -8), (136, -7),
+     (134, -4), (132, -3), (130, -1), (129, 0), (127, 1), (125, 2), (123, 1),
+     (121, 0), (119, 0), (117, 1), (115, 1), (113, 1), (111, 1), (109, 0),
+     (107, 0), (105, 1), (103, 2), (101, 3), (99, 4), (97, 5)],
+    # Australia
+    [(114, -22), (114, -28), (114, -31), (115, -34), (118, -35), (120, -34), (124, -33),
+     (129, -32), (132, -32), (135, -35), (137, -35), (140, -38), (142, -39), (145, -38),
+     (147, -39), (150, -37), (152, -35), (153, -32), (153, -28), (152, -25), (150, -23),
+     (148, -20), (146, -19), (144, -15), (142, -11), (142, -14), (140, -17), (137, -12),
+     (136, -12), (135, -15), (133, -12), (131, -12), (130, -13), (128, -14), (126, -14),
+     (124, -15), (122, -17), (120, -20), (117, -20), (115, -21)],
+    # Madagascar
+    [(44, -16), (47, -15), (50, -16), (50, -19), (48, -22), (47, -25), (45, -25),
+     (44, -22), (43, -20), (44, -18)],
+    # New Zealand
+    [(167, -45), (168, -44), (170, -43), (172, -42), (174, -41), (175, -39), (177, -38),
+     (178, -38), (177, -39), (176, -40), (175, -41), (173, -42), (172, -43), (170, -44),
+     (168, -46), (167, -46)],
 ]
-ALSO_R = [
-    ("28", "Mamdani: Rikers to close by 2032"),
-    ("29", "Denmark: Russia plot to kill rapper"),
-    ("30", "Miliband: EU deal, not tuition fees"),
-    ("31", "Roundup $7.25bn settlement OK'd"),
-    ("32", "SoftBank eyed $1tn SK Hynix deal"),
-    ("33", "F1: full-time stewards from 2027"),
-    ("34", "Australia edge Wales in rugby"),
-    ("35", "Ireland beat S. Africa 20\u201317"),
-    ("36", "Trafalgar tree felled in Norway"),
-    ("37", "\u201cI only sold five copies of GTA 6\u201d"),
-    ("38", "Europe ready to talk to Russia"),
-    ("39", "Florida river: 73-year flood record"),
+
+# ---- content ----
+LEADS = [
+    dict(kicker="LEAD 1  •  CLIMATE  •  ANTALYA", color=DARKRED,
+         headline="COP31 COLLAPSES — NO DEAL ON CLIMATE",
+         sub="EU and island nations reject text with no fossil-fuel mention; longest talks ever.",
+         chip="NO DEAL", chipbg=DARKRED, src="REUTERS • AP", art="cop"),
+    dict(kicker="LEAD 2  •  WAR  •  THE GULF", color=TEAL,
+         headline="THE GULF IGNITES — BAHRAIN, HORMUZ, RIYADH",
+         sub="Bahrain hit, 2 hurt; 2 tankers struck; Riyadh drone down.",
+         chip="ESCALATION", chipbg=ORANGE, src="REUTERS • AP • CNA", art="gulf"),
+    dict(kicker="LEAD 3  •  MARKETS  •  GLOBAL", color=GREEN,
+         headline="BITCOIN BACK ABOVE $60,000",
+         sub="Saturday low $55,130 — a two-year low — then the bounce.",
+         chip="$60,784", chipbg=GREEN, src="FINNHUB • COINSTATS", art="btc"),
 ]
-def also_col(x, items):
-    yy = BY + 30
-    for num, s in items:
-        text(x, yy, num, SANS_B(10), fill=RED)
-        text(x + 20, yy, s, SANS(10))
-        yy += 13
-also_col(578, ALSO_L)
-also_col(800, ALSO_R)
 
-# ---------------------------------------------------------------- footer
-text(512, 1004, "SOURCES: BBC  •  REUTERS  •  CHANNEL NEWS ASIA  •  BLOOMBERG  •  MKT NEWS  •  AP  •  CNN  •  FINNHUB  •  INDECI  •  ESA/JAXA",
-     SANS(11), anchor="ma")
+# (headline, sub, place, source, icon, accent)
+TILES = [
+    ("FACTORY FIRE: 3 DEAD, 39 MISSING", "Search goes on after the blaze",
+     "CIKANDE, INDONESIA", "REUTERS", "fire", DARKRED),
+    ("VERSTAPPEN WINS LAS VEGAS GP", "Norris 2nd, Piastri 3rd — 35 lead changes",
+     "LAS VEGAS", "F1", "car", NAVY2),
+    ("PRINCESS OF WALES SPEAKS ON CANCER", "In a new BBC documentary",
+     "UNITED KINGDOM", "BBC", "crown", (122, 74, 130)),
+    ("TEEN GAMER HELPS FBI RESCUE MISSING GIRL", "Met her in an online game",
+     "UNITED STATES", "BBC", "game", TEAL),
+    ("US DENIES IRAN'S F-16 CLAIM", "No jet damaged over the Gulf",
+     "THE GULF", "CNA", "jet", (90, 90, 96)),
+    ("ENGLAND'S RECORD WIN OVER ALL BLACKS", "Nations Championship",
+     "ENGLAND", "BBC", "rugby", (30, 60, 40)),
+    ("FRANCE INTO FINAL VS SPRINGBOKS", "Nations Championship decider",
+     "FRANCE", "BBC", "rugby", (30, 60, 130)),
+    ("WASHINGTON HAIR SELLS FOR $4,000", "Auction curiosity",
+     "UNITED STATES", "BBC", "gavel", (120, 90, 40)),
+    ("SPITTING IMAGE CREATOR PETER FLUCK DIES, 85", "Satire pioneer",
+     "UNITED KINGDOM", "BBC", "mask", (100, 60, 110)),
+    ("MAN CHARGED AFTER BRADFORD COUNCILLOR STABBED", "Attempted murder charge",
+     "BRADFORD", "BBC", "scales", (60, 70, 90)),
+    ("IRAQ POWER PLANT FIRE: 4 DEAD, 35 HURT", "Hartha, near Basra",
+     "IRAQ", "REUTERS", "plant", DARKRED),
+    ("TOXIC ALCOHOL: 18 DEAD, 228 IN HOSPITAL", "Suspected methanol poisoning",
+     "MANIPUR, INDIA", "REUTERS", "bottle", DARKRED),
+]
 
-img.save(os.path.join(BASE, "entry.png"), optimize=True)
-print("saved entry.png", os.path.getsize(os.path.join(BASE, "entry.png")), "bytes")
+MARKET_STRIP = ("MARKETS — FRI 20 NOV CLOSE:  S&P 500 −3.70%   •   NASDAQ −5.28%   •   "
+                "DOW −1.93%   •   ANT $88.91   •   BRENT $92.57      |      BTC SUN 22 NOV $60,784")
+
+ALSO_A = [
+    "BepiColombo enters Mercury orbit — ESA/JAXA",
+    "'El Chapo Isidro' captured in Sinaloa — $5m bounty",
+    "FBI probes NCIC database hack",
+    "Russian ship Sparta II hit by drones, Finland blames Ukraine",
+    "Zelensky: Crimea bridge strike 'fair response'",
+    "Cricket: India 720/9, record vs NZ",
+    "Huawei jury STILL OUT",
+    "Nigeria boat capsizes: ≥24 dead",
+    "Peru quake M6.7: 1 dead, 16 hurt",
+    "UN 'killer robots' talks deferred to 2028",
+    "Lisbon marches over cost of living",
+    "Virginia measles death — first since 1978",
+]
+ALSO_B = [
+    "Mamdani: Rikers Island to close by 2032",
+    "Denmark accuses Russia over rapper murder plot",
+    "Miliband: EU deal not tied to tuition fees",
+    "Roundup $7.25bn settlement approved",
+    "SoftBank eyed ~$1tn SK Hynix buyout, then dropped it",
+    "F1 to use full-time stewards from 2027",
+    "Australia edge Wales in rugby",
+    "Ireland beat South Africa 20–17; Springboks still in final",
+    "Trafalgar Square Christmas tree felled in Norway",
+    "'I only sold five copies of GTA 6,' says shopkeeper",
+    "Europe ready to negotiate with Russia on Ukraine",
+    "St. Johns River breaks 73-year flood record",
+]
+
+# (n, lon, lat, label) — pin 4 (Mercury) drawn as a star outside the map
+PINS = [
+    (1, 30.7, 36.9, "ANTALYA"), (2, 50.6, 26.2, "BAHRAIN"), (3, 46.7, 24.7, "RIYADH"),
+    (5, -115.1, 36.2, "LAS VEGAS"), (6, 174.8, -41.3, "WELLINGTON"),
+    (7, 106.3, -6.2, "CIKANDE"), (8, -108.5, 25.6, "GUASAVE"),
+    (9, 26.5, 60.2, "FINLAND"), (10, 30.5, 50.5, "KYIV"),
+    (11, -76.0, -11.2, "JUNIN"), (12, 6.3, 4.8, "BAYELSA"),
+]
+
+FOOTER = ("SOURCES:  BBC  •  Reuters  •  Channel News Asia  •  Bloomberg  •  MKT News  •  AP  •  CNN  •  "
+          "Finnhub  •  INDECI  •  ESA/JAXA  •  UKMTO  •  NEMA")
+
+
+# ---- small pictograms for the tile icon panels ----
+def icon(draw, kind, box, fg):
+    x0, y0, x1, y1 = box
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    if kind == "fire":
+        draw.polygon([(cx, cy - 26), (cx + 16, cy - 2), (cx + 9, cy + 4), (cx + 18, cy + 16),
+                      (cx + 6, cy + 22), (cx - 4, cy + 26), (cx - 16, cy + 18), (cx - 18, cy + 2),
+                      (cx - 8, cy - 8)], fill=fg)
+        draw.ellipse([cx - 6, cy + 6, cx + 6, cy + 20], fill=(255, 200, 60))
+    elif kind == "car":
+        draw.rounded_rectangle([cx - 24, cy - 6, cx + 24, cy + 8], radius=5, fill=fg)
+        draw.polygon([(cx - 12, cy - 6), (cx - 6, cy - 16), (cx + 10, cy - 16), (cx + 16, cy - 6)], fill=fg)
+        draw.ellipse([cx - 18, cy + 6, cx - 6, cy + 18], fill=INK)
+        draw.ellipse([cx + 6, cy + 6, cx + 18, cy + 18], fill=INK)
+        for i in range(4):
+            draw.rectangle([cx - 26 + i * 6, cy - 26, cx - 21 + i * 6, cy - 21],
+                           fill=(255, 255, 255) if i % 2 == 0 else INK)
+    elif kind == "crown":
+        draw.polygon([(cx - 22, cy + 14), (cx - 22, cy - 8), (cx - 10, cy + 2), (cx, cy - 16),
+                      (cx + 10, cy + 2), (cx + 22, cy - 8), (cx + 22, cy + 14)], fill=fg)
+        draw.rectangle([cx - 22, cy + 16, cx + 22, cy + 21], fill=fg)
+    elif kind == "game":
+        draw.rounded_rectangle([cx - 24, cy - 12, cx + 24, cy + 14], radius=10, fill=fg)
+        draw.ellipse([cx - 16, cy - 2, cx - 8, cy + 6], fill=INK)
+        draw.ellipse([cx + 10, cy - 4, cx + 18, cy + 4], fill=INK)
+        draw.line([cx + 12, cy + 8, cx + 16, cy + 8], fill=INK, width=2)
+    elif kind == "jet":
+        draw.polygon([(cx - 26, cy + 4), (cx + 8, cy - 8), (cx + 26, cy - 12), (cx + 14, cy + 2),
+                      (cx + 26, cy + 12), (cx + 4, cy + 8), (cx - 20, cy + 10)], fill=fg)
+    elif kind == "rugby":
+        draw.ellipse([cx - 24, cy - 12, cx + 24, cy + 12], fill=fg)
+        draw.line([cx - 8, cy - 10, cx - 8, cy + 10], fill=INK, width=2)
+        draw.line([cx + 8, cy - 10, cx + 8, cy + 10], fill=INK, width=2)
+    elif kind == "gavel":
+        draw.rectangle([cx - 20, cy - 14, cx + 20, cy - 4], fill=fg)
+        draw.rectangle([cx - 2, cy - 4, cx + 2, cy + 16], fill=fg)
+        draw.rectangle([cx - 12, cy + 16, cx + 12, cy + 21], fill=fg)
+    elif kind == "mask":
+        draw.ellipse([cx - 20, cy - 16, cx + 20, cy + 18], fill=fg)
+        draw.ellipse([cx - 12, cy - 4, cx - 4, cy + 2], fill=INK)
+        draw.ellipse([cx + 4, cy - 4, cx + 12, cy + 2], fill=INK)
+        draw.arc([cx - 10, cy + 2, cx + 10, cy + 14], 0, 180, fill=INK, width=2)
+    elif kind == "scales":
+        draw.line([cx, cy - 20, cx, cy + 18], fill=fg, width=3)
+        draw.line([cx - 18, cy - 16, cx + 18, cy - 16], fill=fg, width=3)
+        draw.polygon([(cx - 22, cy - 16), (cx - 14, cy - 16), (cx - 18, cy - 2)], outline=fg, width=2)
+        draw.polygon([(cx + 14, cy - 16), (cx + 22, cy - 16), (cx + 18, cy - 2)], outline=fg, width=2)
+    elif kind == "plant":
+        draw.polygon([(cx - 20, cy - 18), (cx - 12, cy - 18), (cx - 8, cy + 20), (cx - 24, cy + 20)], fill=fg)
+        draw.polygon([(cx + 4, cy - 18), (cx + 12, cy - 18), (cx + 16, cy + 20), (cx + 0, cy + 20)], fill=fg)
+        draw.line([cx - 26, cy + 4, cx + 26, cy + 4], fill=fg, width=3)
+    elif kind == "bottle":
+        draw.rounded_rectangle([cx - 12, cy - 20, cx + 12, cy + 20], radius=6, fill=fg)
+        draw.rectangle([cx - 5, cy - 28, cx + 5, cy - 18], fill=fg)
+        draw.rectangle([cx - 10, cy - 2, cx + 10, cy + 4], fill=INK)
+        draw.text((cx, cy + 12), "!", font=fb(16), fill=INK, anchor="mm")
+
+# ---- lead illustrations ----
+def art_cop(draw, box):
+    x0, y0, x1, y1 = box
+    draw.rectangle(box, fill=(28, 44, 68))
+    # big screen
+    draw.rectangle([x0 + 30, y0 + 12, x1 - 30, y0 + 62], fill=(240, 238, 228))
+    draw.text(((x0 + x1) / 2, y0 + 26), "DRAFT TEXT", font=fb(15), fill=DARKRED, anchor="mm")
+    draw.text(((x0 + x1) / 2, y0 + 47), "NO FOSSIL FUELS MENTIONED", font=fb(12), fill=INK, anchor="mm")
+    # rows of desks + delegates
+    for r in range(3):
+        yy = y0 + 74 + r * 16
+        draw.rectangle([x0 + 22, yy, x1 - 22, yy + 9], fill=(120, 96, 60))
+        for c in range(9):
+            cx = x0 + 34 + c * 30
+            draw.ellipse([cx - 5, yy - 7, cx + 5, yy + 2], fill=(210, 190, 150))
+    # podium
+    draw.rectangle([x0 + 130, y1 - 22, x0 + 190, y1 - 4], fill=(198, 154, 52))
+
+def art_gulf(draw, box):
+    x0, y0, x1, y1 = box
+    draw.rectangle(box, fill=(16, 52, 66))
+    # sea horizon
+    draw.rectangle([x0, y0 + 66, x1, y1], fill=(24, 78, 92))
+    # tanker silhouette
+    draw.rectangle([x0 + 150, y0 + 74, x0 + 300, y0 + 96], fill=(20, 20, 24))
+    draw.rectangle([x0 + 158, y0 + 58, x0 + 196, y0 + 74], fill=(20, 20, 24))
+    draw.rectangle([x0 + 210, y0 + 62, x0 + 232, y0 + 74], fill=(214, 96, 20))
+    draw.rectangle([x0 + 240, y0 + 62, x0 + 262, y0 + 74], fill=(214, 96, 20))
+    # flames over Bahrain (left)
+    for fx, fy, s in [(52, 52, 1.0), (76, 58, 0.75), (34, 62, 0.6)]:
+        draw.polygon([(x0 + fx, y0 + fy - 26 * s), (x0 + fx + 12 * s, y0 + fy - 2 * s),
+                      (x0 + fx + 6 * s, y0 + fy + 8 * s), (x0 + fx - 8 * s, y0 + fy + 8 * s),
+                      (x0 + fx - 12 * s, y0 + fy - 4 * s)], fill=(255, 140, 20))
+    # missile arcs over Riyadh (right) — kept inside the art box
+    draw.arc([x0 + 255, y0 + 16, x0 + 315, y0 + 70], 200, 340, fill=(255, 220, 90), width=3)
+    draw.arc([x0 + 264, y0 + 24, x0 + 308, y0 + 66], 200, 340, fill=(255, 220, 90), width=2)
+    draw.ellipse([x0 + 296, y0 + 22, x0 + 304, y0 + 30], fill=(255, 220, 90))
+    # smoke
+    for sx in (44, 60, 76):
+        draw.ellipse([x0 + sx, y0 + 14, x0 + sx + 16, y0 + 26], fill=(150, 150, 150))
+
+def art_btc(draw, box):
+    x0, y0, x1, y1 = box
+    draw.rectangle(box, fill=(255, 255, 255))
+    for gy in range(4):
+        yy = y0 + 14 + gy * 26
+        draw.line([x0 + 10, yy, x1 - 10, yy], fill=(228, 228, 228), width=1)
+    pts = [(x0 + 14, y0 + 30), (x0 + 70, y0 + 44), (x0 + 126, y0 + 38), (x0 + 176, y0 + 62),
+           (x0 + 216, y0 + 96), (x0 + 256, y0 + 78), (x0 + 296, y0 + 46), (x0 + 316, y0 + 30)]
+    draw.line(pts, fill=GREEN, width=4, joint="curve")
+    draw.ellipse([pts[4][0] - 5, pts[4][1] - 5, pts[4][0] + 5, pts[4][1] + 5], fill=RED)
+    draw.text((pts[4][0] + 4, pts[4][1] + 12), "SAT LOW $55,130", font=fb(10), fill=RED)
+    draw.ellipse([pts[-1][0] - 5, pts[-1][1] - 5, pts[-1][0] + 5, pts[-1][1] + 5], fill=GREEN)
+    draw.text((x0 + 12, y0 + 10), "$60,784", font=fb(20), fill=GREEN)
+
+ART = {"cop": art_cop, "gulf": art_gulf, "btc": art_btc}
+
+# ---- build ----
+def build():
+    img = Image.new("RGB", (W, H), PAPER)
+    d = ImageDraw.Draw(img)
+
+    # masthead
+    d.rectangle([0, 0, W, 88], fill=NAVY)
+    d.text((W / 2, 12), "THE SUNDAY GAZETTE", font=serifb(46), fill=(255, 255, 255), anchor="ma")
+    d.line([60, 66, W - 60, 66], fill=GOLD, width=2)
+    d.text((W / 2, 72), "SUNDAY 22 NOVEMBER 2026    •    40 STORIES    •    5 CONTINENTS",
+           font=fb(13), fill=GOLD, anchor="ma")
+
+    # leads
+    lx = [12, 350, 688]
+    lw = 324
+    ly, lh = 96, 224
+    for i, lead in enumerate(LEADS):
+        x = lx[i]
+        rrect(d, [x, ly, x + lw, ly + lh], fill=(255, 255, 255), outline=LINE, width=1)
+        ART[lead["art"]](d, (x + 1, ly + 1, x + lw - 1, ly + 112))
+        chip(d, x + lw - 108, ly + 8, lead["chip"], fb(12), lead["chipbg"])
+        d.text((x + 10, ly + 120), lead["kicker"], font=fb(10), fill=lead["color"])
+        hl = wrap(d, lead["headline"], fb(20), lw - 20)
+        yy = ly + 136
+        for ln in hl[:2]:
+            d.text((x + 10, yy), ln, font=fb(20), fill=INK)
+            yy += 23
+        sub = wrap(d, lead["sub"], fr(12), lw - 20)
+        for ln in sub[:2]:
+            d.text((x + 10, yy), ln, font=fr(12), fill=(60, 60, 60))
+            yy += 15
+        d.text((x + 10, ly + lh - 16), lead["src"], font=fb(9), fill=GREY)
+
+    # tiles 4x3
+    tx0, ty0 = 12, 328
+    tw, th, gap = 244, 100, 8
+    for idx, (head, sub, place, src, ic, accent) in enumerate(TILES):
+        r, c = divmod(idx, 4)
+        x = tx0 + c * (tw + gap)
+        y = ty0 + r * (th + 6)
+        rrect(d, [x, y, x + tw, y + th], fill=(255, 255, 255), outline=LINE, width=1)
+        d.rectangle([x + 1, y + 1, x + 62, y + th - 1], fill=accent)
+        icon(d, ic, (x + 6, y + 22, x + 56, y + 78), (255, 255, 255))
+        d.text((x + 68, y + 6), place, font=fb(8), fill=accent)
+        d.text((x + tw - 6, y + 6), src, font=fb(8), fill=GREY, anchor="ra")
+        hl = wrap(d, head, fb(13), tw - 76)
+        yy = y + 18
+        for ln in hl[:3]:
+            d.text((x + 68, yy), ln, font=fb(13), fill=INK)
+            yy += 15
+        sl = wrap(d, sub, fr(10), tw - 76)
+        yy = y + th - 32
+        for ln in sl[:2]:
+            d.text((x + 68, yy), ln, font=fr(10), fill=(70, 70, 70))
+            yy += 11
+
+    # markets strip
+    d.rectangle([12, 646, W - 12, 674], fill=NAVY)
+    d.text((W / 2, 652), MARKET_STRIP, font=fb(11), fill=(255, 255, 255), anchor="ma")
+
+    # map band
+    my0, my1 = 682, 838
+    d.text((12, my0), "WHERE IT HAPPENED — 12 PLACES, 5 CONTINENTS",
+           font=fb(13), fill=INK)
+    d.text((W - 12, my0), "EUROPE 3  •  ASIA 3  •  N. AMERICA 2  •  S. AMERICA 1  •  AFRICA 1  •  OCEANIA 1  •  SPACE 1",
+           font=fr(10), fill=GREY, anchor="ra")
+    mx0, mx1, mtop, mbot = 12, W - 12, my0 + 20, my1
+    d.rectangle([mx0, mtop, mx1, mbot], fill=SEA, outline=LINE)
+    lat_top, lat_bot = 84.0, -58.0
+    def proj(lon, lat):
+        px = mx0 + (lon + 180.0) / 360.0 * (mx1 - mx0)
+        py = mtop + (lat_top - lat) / (lat_top - lat_bot) * (mbot - mtop)
+        return px, py
+    for poly in CONTINENTS:
+        d.polygon([proj(lon, lat) for lon, lat in poly], fill=LAND, outline=(170, 158, 120))
+    # graticule
+    for lon in range(-150, 181, 30):
+        px = mx0 + (lon + 180.0) / 360.0 * (mx1 - mx0)
+        d.line([px, mtop, px, mbot], fill=(200, 226, 236), width=1)
+    # pins (nudge 1/2/3 and 9/10 apart with leader lines — they cluster in Europe/ME)
+    nudge = {1: (-8, 8), 2: (-5, -10), 3: (5, 10), 9: (-10, -6), 10: (11, -7)}
+    for n, lon, lat, label in PINS:
+        px, py = proj(lon, lat)
+        dx, dy = nudge.get(n, (0, 0))
+        qx, qy = px + dx, py + dy
+        if (dx, dy) != (0, 0):
+            d.line([px, py, qx, qy], fill=RED, width=1)
+        d.ellipse([qx - 8, qy - 8, qx + 8, qy + 8], fill=RED, outline=(255, 255, 255), width=2)
+        d.text((qx, qy), str(n), font=fb(10), fill=(255, 255, 255), anchor="mm")
+    # Mercury star pin (pin 4) — outside the map, top right
+    sx, sy = mx1 - 108, mtop + 16
+    star = [(sx, sy - 11), (sx + 3, sy - 3), (sx + 11, sy - 3), (sx + 5, sy + 2),
+            (sx + 8, sy + 10), (sx, sy + 5), (sx - 8, sy + 10), (sx - 5, sy + 2),
+            (sx - 11, sy - 3), (sx - 3, sy - 3)]
+    d.polygon(star, fill=GOLD, outline=(255, 255, 255))
+    d.text((sx + 16, sy), "4 MERCURY", font=fb(10), fill=INK, anchor="lm")
+    d.text((mx0 + 4, mbot - 14), "1 ANTALYA  2 BAHRAIN  3 RIYADH  5 LAS VEGAS  6 WELLINGTON  7 CIKANDE  8 GUASAVE  "
+           "9 FINLAND  10 KYIV  11 JUNIN  12 BAYELSA", font=fr(9), fill=(40, 60, 70))
+
+    # ALSO list
+    ay = 846
+    d.text((12, ay), "ALSO TODAY", font=fb(13), fill=INK)
+    d.line([12, ay + 18, W - 12, ay + 18], fill=LINE, width=1)
+    f_also = fr(11)
+    for i, item in enumerate(ALSO_A):
+        d.text((16, ay + 22 + i * 10), "•  " + item, font=f_also, fill=INK)
+    for i, item in enumerate(ALSO_B):
+        d.text((520, ay + 22 + i * 10), "•  " + item, font=f_also, fill=INK)
+
+    # footer
+    d.line([12, 988, W - 12, 988], fill=LINE, width=1)
+    d.text((W / 2, 994), FOOTER, font=fr(10), fill=GREY, anchor="ma")
+    d.text((W / 2, 1008), "THE SUNDAY GAZETTE  •  All stories first reported Sunday 22 November 2026 unless noted  •  v2 — Monday refresh",
+           font=fr(9), fill=GREY, anchor="ma")
+
+    img.save(OUT, optimize=True)
+    print("saved", OUT, img.size, os.path.getsize(OUT), "bytes")
+
+if __name__ == "__main__":
+    build()
